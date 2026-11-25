@@ -1,0 +1,34 @@
+name: restock-monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"  # GitHub's floor; actual runs often drift 5-15 min
+  workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Send a test email instead of checking stock"
+        type: boolean
+        default: false
+
+permissions:
+  actions: write  # lets the job disable this workflow after alerting
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        run: python3 monitor.py ${{ inputs.test_email && '--test-email' || '' }}
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+
+      - name: Stop monitoring after alert
+        if: steps.check.outputs.in_stock == 'true'
+        run: gh workflow disable restock-monitor.yml --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
